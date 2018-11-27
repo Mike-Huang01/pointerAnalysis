@@ -9,7 +9,7 @@ import java.util.Map;
 public class WholeProgramTransformer extends SceneTransformer {
     protected  void internalTransform(String arg0, Map<String, String> arg1){
         //Chain<SootClass> clazz = Scene.v().getApplicationClasses();
-        SootClass mainClass =  Scene.v().getSootClass("Hello");
+        SootClass mainClass =  Scene.v().getSootClass(RunPointerAnalysis.mainClass);
         SootMethod m = mainClass.getMethodByName("main");
         Body b = m.retrieveActiveBody();
 

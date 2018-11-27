@@ -1,8 +1,8 @@
 # Soot-based Pointer Analysis
 
-* `lib/` soot library, should be added to classpath
-* `sootOutput/` test files
-* `RunPointerAnalysis.java` entry of analysis
+* please use IntelliJ to open this project
+* `code/` test files
+* `src/main/java/RunPointerAnalysis.java` entry of analysis
 
 ## command line options:
-* `-w -pp -cp sootOutput A Benchmark Hello`
+* `-w -cp JAVA_COMPILER_OUTPUT_PATH -pp test.Hello`

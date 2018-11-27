@@ -1,3 +1,6 @@
+package benchmark.internal;
+
+
 public class Benchmark {
 
 	public static void alloc(int id) {
