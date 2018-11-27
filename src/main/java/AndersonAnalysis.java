@@ -9,8 +9,12 @@ import soot.toolkits.scalar.ForwardFlowAnalysis;
 import java.util.*;
 
 public class AndersonAnalysis {
+
+    static Map<String, Set<String>> answers = new HashMap<String, Set<String>>();
+
     private Map resultBeforeUnit;
     private Map resultAfterUnit;
+
     public AndersonAnalysis(DirectedGraph g){
         Anderson anderson = new Anderson(g);
         resultBeforeUnit = new HashMap();
@@ -20,196 +24,146 @@ public class AndersonAnalysis {
         while (unitIt.hasNext()){
             Unit s = (Unit) unitIt.next();
 
-            FlowSet set = (FlowSet) anderson.getFlowBefore(s);
-            resultBeforeUnit.put(s,
-                    Collections.unmodifiableList(set.toList()));
+            Map<String, Set<String>> r;
+            r = (Map<String, Set<String>>) anderson.getFlowBefore(s);
+            resultBeforeUnit.put(s, r.toString());
 
-            set = (FlowSet) anderson.getFlowAfter(s);
-            resultAfterUnit.put(s,
-                    Collections.unmodifiableList(set.toList()));
+            r = (Map<String, Set<String>>) anderson.getFlowAfter(s);
+            resultAfterUnit.put(s, r.toString());
         }
 
     }
 
-    public List getResultBeforeUnit(Unit s){
-        return (List) resultBeforeUnit.get(s);
+    public Object getResultBeforeUnit(Unit s){
+        return resultBeforeUnit.get(s);
     }
 
-    public List getResultAfterUnit(Unit s){
-        return (List) resultAfterUnit.get(s);
+    public Object getResultAfterUnit(Unit s){
+        return resultAfterUnit.get(s);
     }
 
+    public void printAnswer()
+    {
+        String answer = "";
+        for (Map.Entry<String, Set<String>> e : answers.entrySet()) {
+            answer += e.getKey() + ":";
+            for (String i : e.getValue()) {
+                answer += " " + i;
+            }
+            answer += "\n";
+        }
+        AnswerPrinter.printAnswer(answer);
+    }
 }
 
-class Anderson extends ForwardFlowAnalysis{
-    private FlowSet emptySet;
-    private int allocId;
 
-    public Anderson(DirectedGraph g){
+
+
+class Anderson extends ForwardFlowAnalysis{
+    private int allocId; // 用于记录new语句对应的ID
+
+    public Anderson(DirectedGraph g)
+    {
         super(g);
-        emptySet = new ArraySparseSet();
         doAnalysis();
     }
 
-    @Override
-    protected void merge(Object in1, Object in2, Object out){
-        FlowSet inSet1 = (FlowSet) in1,
-                inSet2 = (FlowSet) in2,
-                outSet = (FlowSet) out;
-
-        //TODO the following code is buggy, not really union
-
-        Set<String> namesInset1 = new TreeSet<>();
-        Map<String, List<Integer>> mapInset1 = new HashMap<>();
-        for (Object obj: inSet1){
-            Map<String, List<Integer>> ele = (Map<String, List<Integer>>) obj;
-            // map only contains one key
-            String name = getOnlyKey(ele);
-            namesInset1.add(name);
-            mapInset1.put(name, ele.get(name));
-
-        }
-
-        Set<String> namesInSet2 = new TreeSet<>();
-        Map<String, List<Integer>> mapInset2 = new HashMap<>();
-        for (Object obj: inSet2){
-            Map<String, List<Integer>> ele = (Map<String, List<Integer>>) obj;
-            // map only contains one key
-            String name = getOnlyKey(ele);
-            namesInSet2.add(name);
-            mapInset2.put(name, ele.get(name));
-        }
-
-        //namesInset1.addAll(namesInSet2);
-        Set<String> allNames = new TreeSet<>(namesInset1);
-        allNames.addAll(namesInSet2);
-
-        for (String name: allNames){
-            if (namesInset1.contains(name) && namesInSet2.contains(name)){
-                List<Integer> arr = new ArrayList<>(mapInset1.get(name));
-                List<Integer> arr2 = mapInset2.get(name);
-                arr.addAll(arr2);
-                Map<String, List<Integer>> eleOut = new HashMap<>();
-                eleOut.put(name, arr);
-            }else if(namesInset1.contains(name)){
-                outSet.add(mapInset1.get(name));
-            }else{
-                outSet.add(mapInset2.get(name));
-            }
-        }
-    }
-
-    @Override
-    protected void copy(Object source, Object dest){
-        FlowSet srcSet = (FlowSet) source,
-                destSet = (FlowSet) dest;
-        srcSet.copy(destSet);
-    }
-
+    // 数据流分析的元素是 Map<变量名, Set<对应变量可能指向的位置>>
     @Override
     protected Object newInitialFlow() {
-        return emptySet.clone();
+        return new HashMap<String, Set<String>>();
     }
-
     @Override
     protected Object entryInitialFlow() {
-        return emptySet.clone();
+        return new HashMap<String, Set<String>>();
+    }
+
+
+
+    @Override
+    protected void merge(Object _in1, Object _in2, Object _out)
+    {
+        Map<String, Set<String>> a, b, c;
+        a = (Map<String, Set<String>>) _in1;
+        b = (Map<String, Set<String>>) _in2;
+        c = (Map<String, Set<String>>) _out;
+
+        // 合并时针对对应变量，做Set上的并集
+        // c = a 并 b
+        c.clear(); c.putAll(a);
+        for (Map.Entry<String, Set<String>> e: b.entrySet()) {
+            if (!c.containsKey(e.getKey())) c.put(e.getKey(), new HashSet<String>());
+            ((Set<String>) c.get(e.getKey())).addAll(e.getValue());
+        }
     }
 
     @Override
-    protected void flowThrough(Object in, Object node, Object out) {
-        FlowSet inSet = (FlowSet) in,
-                outSet = (FlowSet) out;
-        Unit u = (Unit) node;
-        // out <- (in - expr containing locals defined in d) union out
-        kill(inSet, u, outSet);
-        // out <- out union expr used in d
-        gen(outSet, u);
+    protected void copy(Object _src, Object _dst)
+    {
+        Map<String, Set<String>> src, dst;
+        src = (Map<String, Set<String>>) _src;
+        dst = (Map<String, Set<String>>) _dst;
+
+        // 深拷贝
+        dst.clear();
+        for (Map.Entry<String, Set<String>> e: src.entrySet()) {
+            dst.put(e.getKey(), new HashSet<String>(e.getValue()));
+        }
     }
 
-    private void kill(FlowSet inSet, Unit u, FlowSet outSet){
-        String name = "";
-
-        if (u instanceof DefinitionStmt){
-            Local var = (Local)((DefinitionStmt) u).getLeftOp();
-            name = var.getName();
 
 
-        }
+    @Override
+    protected void flowThrough(Object _in, Object _node, Object _out)
+    {
+        Map<String, Set<String>> in, out;
+        in = (Map<String, Set<String>>) _in;
+        out = (Map<String, Set<String>>) _out;
+        Unit u = (Unit) _node;
 
-        for(Object obj: inSet){
-            Map<String, List<Integer>> ele = (Map<String, List<Integer>>) obj;
-            if (!ele.containsKey(name)){
-                outSet.add(ele);
-            }
-        }
-        //Iterator inIt = inSet.iterator();
-        //inSet.difference(kills, outSet);
-    }
-
-    private String getOnlyKey(Map<String, List<Integer>> bag){
-        String ret = "";
-        for(String key: bag.keySet()){
-            ret = key;
-            break;
-        }
-        return ret;
-    }
-
-    private void gen(FlowSet outSet, Unit u){
-
-        if (u instanceof InvokeStmt){
+        if (u instanceof InvokeStmt) {
             InvokeExpr ie = ((InvokeStmt) u).getInvokeExpr();
-            if (ie.getMethod().toString().contains("Benchmark: void alloc(int)>")){
-                // 记录得到的分配ID
+            if (ie.getMethod().toString().contains("Benchmark: void alloc")) {
+                // 记录得到的new语句ID
                 allocId = ((IntConstant) ie.getArgs().get(0)).value;
             }
+            if (ie.getMethod().toString().contains("Benchmark: void test")) {
+                int targetId = ((IntConstant) ie.getArgs().get(0)).value;
+                String targetName = ((Local)ie.getArgs().get(1)).getName();
+                AndersonAnalysis.answers.put(Integer.toString(targetId), new HashSet<String>(in.get(targetName)));
+            }
         }
 
-        //Iterator outIt = outSet.iterator();
+        // 先把in复制到out，再做操作
+        copy(in, out);
 
         if (u instanceof DefinitionStmt) {
-            Map<String, List<Integer>> ele = new HashMap<>();
-            List<Integer> arr = new ArrayList<>();
+            DefinitionStmt du = (DefinitionStmt) u;
 
-            if (((DefinitionStmt) u).getRightOp() instanceof NewExpr) {
-                //TODO check constructor's parameter
+            String leftName;
+            if (du.getLeftOp() instanceof Local) {
+                leftName = ((Local) du.getLeftOp()).getName();
 
-                Local var = (Local) ((DefinitionStmt) u).getLeftOp();
-                String name = var.getName();
-                arr.add(allocId);
-                ele.put(name, arr);
-                outSet.add(ele);
-                allocId = 0; // 为了让没有标注的new分配ID为0,此处用完就给它置0
-            }
+                // 从集合中删去左侧变量
+                out.remove(leftName);
 
-            if (((DefinitionStmt) u).getLeftOp() instanceof Local && ((DefinitionStmt) u).getRightOp() instanceof Local) {
-                Local varLeft = (Local) ((DefinitionStmt) u).getLeftOp();
-                String left = varLeft.getName();
-
-                Local varRight = (Local) ((DefinitionStmt) u).getRightOp();
-                String right = varRight.getName();
-
-                //Boolean leftIn = false;
-                Boolean rightIn = false;
-
-                List<Integer> rightList = new ArrayList<>();
-
-                for (Object obj : outSet) {
-                    Map<String, List<Integer>> item = (Map<String, List<Integer>>) obj;
-                    if (item.containsKey(right)) {
-                        rightIn = true;
-                        rightList = item.get(right);
-                    }
+                if (du.getRightOp() instanceof NewExpr) {
+                    // 若是new语句，添加 (leftOp, { new ID })
+                    //TODO check constructor's parameter
+                    Set<String> ts = new HashSet<String>();
+                    ts.add(Integer.toString(allocId));
+                    out.put(leftName, ts);
+                    allocId = 0; // 为了让没有标注的new分配ID为0,此处用完就给它置0
                 }
 
-                if (!rightIn) return;
-                ele = new HashMap<>();
-                arr = new ArrayList<>();
-                arr.addAll(rightList);
-                ele.put(left, arr);
-                outSet.add(ele);
+                if (du.getRightOp() instanceof Local) {
+                    // 若是赋值语句，则用右侧变量对应的集合替换左侧变量对应的集合
+                    String rightName = ((Local) du.getRightOp()).getName();
+                    out.put(leftName, new HashSet<String>(in.get(rightName)));
+                }
             }
+
+            // FIXME
         }
 
     }

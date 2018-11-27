@@ -7,7 +7,10 @@ public class Hello {
     A b = new A();
     Benchmark.alloc(3);
     A c = new A();
-    if (args.length > 1) a = b;
+    while (args.length > 1) a = b;
+
+    a.next = b;
+    b.next = c;
     //if (args.length > 1) c = a;
     Benchmark.test(1, a); 
     Benchmark.test(2, b);

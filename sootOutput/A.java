@@ -3,6 +3,7 @@ public class A {
 	// Object A with attributes of type B
 
 	public int i = 5;
+	public A next;
 
 //	public B f = new B();
 //	public B g = new B();

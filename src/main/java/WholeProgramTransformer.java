@@ -20,13 +20,15 @@ public class WholeProgramTransformer extends SceneTransformer {
         Iterator gIt = graph.iterator();
         while (gIt.hasNext()){
             Unit u = (Unit) gIt.next();
-            List before = pointerAnalysis.getResultBeforeUnit(u);
-            List after = pointerAnalysis.getResultAfterUnit(u);
+            Object before = pointerAnalysis.getResultBeforeUnit(u);
+            Object after = pointerAnalysis.getResultAfterUnit(u);
             System.out.println(u.toString());
             System.out.println(before);
             System.out.println(after);
             System.out.println("-------------");
             System.out.println("-------------");
         }
+
+        pointerAnalysis.printAnswer();
     }
 }
