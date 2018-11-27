@@ -161,6 +161,7 @@ class Anderson extends ForwardFlowAnalysis{
         if (u instanceof InvokeStmt){
             InvokeExpr ie = ((InvokeStmt) u).getInvokeExpr();
             if (ie.getMethod().toString().contains("Benchmark: void alloc(int)>")){
+                // 记录得到的分配ID
                 allocId = ((IntConstant) ie.getArgs().get(0)).value;
             }
         }
@@ -179,6 +180,7 @@ class Anderson extends ForwardFlowAnalysis{
                 arr.add(allocId);
                 ele.put(name, arr);
                 outSet.add(ele);
+                allocId = 0; // 为了让没有标注的new分配ID为0,此处用完就给它置0
             }
 
             if (((DefinitionStmt) u).getLeftOp() instanceof Local && ((DefinitionStmt) u).getRightOp() instanceof Local) {
