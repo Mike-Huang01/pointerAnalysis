@@ -14,6 +14,10 @@ public class Hello {
     //if (args.length > 1) c = a;
     Benchmark.test(1, a); 
     Benchmark.test(2, b);
-    Benchmark.test(3, c); 
+    Benchmark.test(3, c);
+
+    Benchmark.test(4, a.next);
+    Benchmark.test(5, b.next);
+    Benchmark.test(6, c.next);
   }
 }

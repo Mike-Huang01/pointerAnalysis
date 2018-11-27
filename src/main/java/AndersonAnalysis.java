@@ -1,4 +1,5 @@
 import soot.Local;
+import soot.SootField;
 import soot.Unit;
 import soot.jimple.*;
 import soot.toolkits.graph.DirectedGraph;
@@ -121,49 +122,89 @@ class Anderson extends ForwardFlowAnalysis{
         out = (Map<String, Set<String>>) _out;
         Unit u = (Unit) _node;
 
+        // 先把in复制到out，再做操作
+        copy(in, out);
+
+        // 处理Benchmark相关的InvokeStmt
         if (u instanceof InvokeStmt) {
             InvokeExpr ie = ((InvokeStmt) u).getInvokeExpr();
             if (ie.getMethod().toString().contains("Benchmark: void alloc")) {
                 // 记录得到的new语句ID
                 allocId = ((IntConstant) ie.getArgs().get(0)).value;
+                return;
             }
             if (ie.getMethod().toString().contains("Benchmark: void test")) {
                 int targetId = ((IntConstant) ie.getArgs().get(0)).value;
                 String targetName = ((Local)ie.getArgs().get(1)).getName();
+                // 将答案记录下来
                 AndersonAnalysis.answers.put(Integer.toString(targetId), new HashSet<String>(in.get(targetName)));
+                return;
             }
         }
 
-        // 先把in复制到out，再做操作
-        copy(in, out);
 
+        // 处理赋值语句
         if (u instanceof DefinitionStmt) {
             DefinitionStmt du = (DefinitionStmt) u;
 
-            String leftName;
-            if (du.getLeftOp() instanceof Local) {
-                leftName = ((Local) du.getLeftOp()).getName();
+            // 处理右侧
+            Set<String> rightSet = new HashSet<String>(); rightSet.add("#unk");
 
-                // 从集合中删去左侧变量
-                out.remove(leftName);
+            if (du.getRightOp() instanceof NewExpr) {
+                // 若是new语句，集合应为 { newID }
+                //TODO check constructor's parameter
+                rightSet = new HashSet<String>();
+                rightSet.add(Integer.toString(allocId));
+                allocId = 0; // 为了让没有标注的new分配ID为0,此处用完就给它置0
 
-                if (du.getRightOp() instanceof NewExpr) {
-                    // 若是new语句，添加 (leftOp, { new ID })
-                    //TODO check constructor's parameter
-                    Set<String> ts = new HashSet<String>();
-                    ts.add(Integer.toString(allocId));
-                    out.put(leftName, ts);
-                    allocId = 0; // 为了让没有标注的new分配ID为0,此处用完就给它置0
+            } else if (du.getRightOp() instanceof Local) {
+                // 若是变量，则复制一份该变量可能指向的集合
+                String rightName = ((Local) du.getRightOp()).getName();
+                rightSet = new HashSet<String>(in.get(rightName));
+
+            } else if (du.getRightOp() instanceof InstanceFieldRef) {
+                InstanceFieldRef fr = (InstanceFieldRef) du.getRightOp();
+                String baseName = ((Local) fr.getBase()).getName();
+                String fieldName = fr.getField().getName();
+                // 若是域，则将base可能指向的对象的.field可能指向的对象并起来
+                rightSet = new HashSet<String>();
+                Set<String> basePointsTo = in.get(baseName);
+                for (String pto: basePointsTo) {
+                    String k = pto + "." + fieldName;
+                    if (in.containsKey(k)) {
+                        rightSet.addAll(in.get(k));
+                    }
                 }
-
-                if (du.getRightOp() instanceof Local) {
-                    // 若是赋值语句，则用右侧变量对应的集合替换左侧变量对应的集合
-                    String rightName = ((Local) du.getRightOp()).getName();
-                    out.put(leftName, new HashSet<String>(in.get(rightName)));
-                }
+            } else {
+                System.out.println("RightOp unknown: " + du.getRightOp().getClass().getName());
             }
 
-            // FIXME
+            // 处理左侧
+            if (du.getLeftOp() instanceof Local) {
+                String leftName = ((Local) du.getLeftOp()).getName();
+                // 用右侧变量对应的集合替换左侧变量对应的集合
+                out.put(leftName, rightSet);
+
+            } else if (du.getLeftOp() instanceof InstanceFieldRef) {
+                InstanceFieldRef fr = (InstanceFieldRef) du.getLeftOp();
+                String baseName = ((Local) fr.getBase()).getName();
+                String fieldName = fr.getField().getName();
+                // 先查询 base 可能指向谁
+                Set<String> basePointsTo = in.get(baseName);
+                for (String pto: basePointsTo) {
+                    String k = pto + "." + fieldName;
+                    if (basePointsTo.size() == 1) {
+                        // 如果只可能指向一个对象，则直接替换
+                        out.put(k, rightSet);
+                    } else {
+                        // 如果指向多个对象，则合并
+                        if (!out.containsKey(k)) out.put(k, new HashSet<String>());
+                        out.get(k).addAll(rightSet);
+                    }
+                }
+            } else {
+                System.out.println("LeftOp unknown: " + du.getLeftOp().getClass().getName());
+            }
         }
 
     }
