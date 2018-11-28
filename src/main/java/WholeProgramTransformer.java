@@ -1,3 +1,4 @@
+import com.sun.org.apache.xpath.internal.operations.And;
 import soot.*;
 import soot.jimple.toolkits.callgraph.ReachableMethods;
 import soot.toolkits.graph.ExceptionalUnitGraph;
@@ -20,14 +21,16 @@ public class WholeProgramTransformer extends SceneTransformer {
 
         SootClass mainClass =  Scene.v().getSootClass(RunPointerAnalysis.mainClass);
         SootMethod m = mainClass.getMethodByName("main");
-        Body b = m.retrieveActiveBody();
 
-        UnitGraph graph = new ExceptionalUnitGraph(b);
 
-        AndersonAnalysis pointerAnalysis = new AndersonAnalysis(graph, "/main", new HashMap<String, Set<String>>());
+        AndersonAnalysis.tryEnterMethod(m);
+        AndersonAnalysis pointerAnalysis = new AndersonAnalysis(AndersonAnalysis.getGraph(m), "/main", new HashMap<String, Set<String>>());
         pointerAnalysis.printDetails();
+        AndersonAnalysis.leaveMethod(m);
 
-        AndersonAnalysis.printAnswer();
+        System.out.println("== with fallback ==\n" + AndersonAnalysis.getAnswer(true));
+        System.out.println("== without fallback ==\n" + AndersonAnalysis.getAnswer(false));
+        AnswerPrinter.printAnswer(AndersonAnalysis.getAnswer(true));
 
     }
 }

@@ -1,6 +1,7 @@
 import soot.*;
 import soot.jimple.*;
 import soot.jimple.internal.JReturnStmt;
+import soot.jimple.spark.ondemand.genericutil.Stack;
 import soot.toolkits.graph.DirectedGraph;
 import soot.toolkits.graph.ExceptionalUnitGraph;
 import soot.toolkits.graph.UnitGraph;
@@ -14,17 +15,47 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
 {
     // 打印答案用代码
     static Map<String, Set<String>> answers = new HashMap<String, Set<String>>();
-    static public void printAnswer()
+    static Set<String> allAllocID = new HashSet<String>();
+    static public String getAnswer(boolean fallback)
     {
-        String answer = "";
-        for (Map.Entry<String, Set<String>> e : answers.entrySet()) {
-            answer += e.getKey() + ":";
-            for (String i : e.getValue()) {
-                answer += " " + i;
+        Comparator<String> cmp = new Comparator<String>()
+        {
+            @Override
+            public int compare(String o1, String o2)
+            {
+                if (o1.matches("^\\d+$") && o2.matches("^\\d+$")) {
+                    return new Integer(o1).compareTo(new Integer(o2));
+                } else {
+                    return o1.compareTo(o2);
+                }
             }
-            answer += "\n";
+        };
+
+        StringBuilder answer = new StringBuilder();
+        List<String> keys = new ArrayList<String>(answers.keySet());
+        Collections.sort(keys, cmp);
+        for (String key: keys) {
+            answer.append(key + ":");
+
+            Set<String> valSet = answers.get(key);
+
+            if (fallback) {
+                valSet = new HashSet<String>(valSet);
+                if (valSet.contains("#unk")) {
+                    valSet.remove("#unk");
+                    valSet.addAll(allAllocID);
+                }
+                valSet.remove("#null");
+            }
+
+            List<String> vals = new ArrayList<String>(valSet);
+            Collections.sort(vals, cmp);
+            for (String val : vals) {
+                answer.append(" " + val);
+            }
+            answer.append("\n");
         }
-        AnswerPrinter.printAnswer(answer);
+        return answer.toString();
     }
 
     ////////
@@ -55,6 +86,8 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
 
 
     private static int allocId; // 用于记录new语句对应的ID
+    private static Set<String> andersonStack = new HashSet<String>();; // 记录调用栈上各函数出现次数
+
     DirectedGraph curGraph;
     String curPrefix;
     Map<String, Set<String>> initSet, returnSet; // 初始flowSet，返回值returnSet
@@ -69,10 +102,34 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
         doAnalysis();
     }
 
+    static DirectedGraph getGraph(SootMethod m)
+    {
+        return new ExceptionalUnitGraph(m.retrieveActiveBody());
+    }
+
+
+    static String getMethodUniqueString(SootMethod m)
+    {
+        return m.toString();
+    }
+    public static void leaveMethod(SootMethod m)
+    {
+        andersonStack.remove(getMethodUniqueString(m));
+    }
+    public static boolean tryEnterMethod(SootMethod m)
+    {
+        if (andersonStack.contains(getMethodUniqueString(m))) {
+            return false;
+        }
+        andersonStack.add(getMethodUniqueString(m));
+        return true;
+    }
+
     // 数据流分析的元素是 Map<变量名, Set<对应变量可能指向的位置>>
     // “变量可能指向的位置”的格式：
     //    一个正整数
     //    #unk 表示不知道
+    //    #null 表示null
     // “变量名”的格式：
     //    普通变量名    代表局部变量 如 r1 $r0
     //    #数字.域      代表堆上对象的某个域 如#1.somefield
@@ -150,34 +207,58 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
         return ret;
     }
 
-    Set<String> processInvokeExpr(InvokeExpr ie, Map<String, Set<String>> in, Map<String, Set<String>> out)
+    Set<String> processInvokeExpr(Unit u, InvokeExpr ie, Map<String, Set<String>> in, Map<String, Set<String>> out)
     {
         SootMethod m = ie.getMethod();
 
         Set<String> retValSet = null;
 
-        if (m.getDeclaringClass().isApplicationClass()) {
-            Map<String, Set<String>> nextInitSet = filterInitSetForInvoke(in);
+        if (!m.getDeclaringClass().isJavaLibraryClass()) {
 
-            // 添加参数
-            if (ie instanceof SpecialInvokeExpr) {
-                String baseName = ((Local) ((SpecialInvokeExpr)ie).getBase()).getName();
-                nextInitSet.put("%this", new HashSet<String>(in.get(baseName)));
-            }
-            List<Value> args = ie.getArgs();
-            for (int i = 0; i < args.size(); i++) {
-                Value curArg = args.get(i);
-                if (curArg instanceof Local) {
-                    String argName = ((Local)curArg).getName();
-                    nextInitSet.put("%" + Integer.toString(i), new HashSet<String>(in.get(argName)));
+            if (tryEnterMethod(m)) {
+                Map<String, Set<String>> nextInitSet = filterInitSetForInvoke(in);
+
+                // 添加参数
+                if (ie instanceof SpecialInvokeExpr) {
+                    String baseName = ((Local) ((SpecialInvokeExpr)ie).getBase()).getName();
+                    nextInitSet.put("%this", new HashSet<String>(in.get(baseName)));
                 }
+                List<Value> args = ie.getArgs();
+                for (int i = 0; i < args.size(); i++) {
+                    Value curArg = args.get(i);
+                    if (curArg instanceof Local) {
+                        String argName = ((Local)curArg).getName();
+                        nextInitSet.put("%" + Integer.toString(i), new HashSet<String>(in.get(argName)));
+                    }
+                }
+
+                AndersonAnalysis nextAnderson = new AndersonAnalysis(getGraph(m), curPrefix + "/" + m.getDeclaringClass().getName() + "." + m.getName(), nextInitSet);
+                nextAnderson.printDetails();
+
+                retValSet = filterInvokeResult(nextAnderson, out);
+
+                leaveMethod(m);
+
+            } else {
+                // 若发现函数递归（我们无法处理）
+                // 将所有堆上分析结果和返回值置为#unk
+
+                System.out.println(">>> recursion detected, result dropped [" + u.toString() + "]");
+                out.clear();
+                for (Map.Entry<String, Set<String>> e: in.entrySet()) {
+                    if (e.getKey().startsWith("#")) {
+                        Set<String> ns = new HashSet<String>();
+                        ns.add("#unk");
+                        out.put(e.getKey(), ns);
+                    } else {
+                        out.put(e.getKey(), new HashSet<String>(e.getValue()));
+                    }
+                }
+
+                retValSet = new HashSet<String>();
+                retValSet.add("#unk");
+
             }
-
-            UnitGraph nextGraph = new ExceptionalUnitGraph(m.retrieveActiveBody());
-            AndersonAnalysis nextAnderson = new AndersonAnalysis(nextGraph, curPrefix + "/" + m.getName(), nextInitSet);
-            nextAnderson.printDetails();
-
-            retValSet = filterInvokeResult(nextAnderson, out);
         }
 
         return retValSet;
@@ -200,17 +281,18 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
             if (ie.getMethod().toString().contains("Benchmark: void alloc")) {
                 // 记录得到的new语句ID
                 allocId = ((IntConstant) ie.getArgs().get(0)).value;
+                allAllocID.add(Integer.toString(allocId));
                 return;
             }
             if (ie.getMethod().toString().contains("Benchmark: void test")) {
                 int targetId = ((IntConstant) ie.getArgs().get(0)).value;
-                String targetName = ((Local)ie.getArgs().get(1)).getName();
+                Set<String> resultSet = in.get(((Local)ie.getArgs().get(1)).getName());
                 // 将答案记录下来
                 if (AndersonAnalysis.answers.containsKey(Integer.toString(targetId))) {
                     // 如果已经存在则合并（因为同一test()可能被执行多次）
-                    AndersonAnalysis.answers.get(Integer.toString(targetId)).addAll(in.get(targetName));
+                    AndersonAnalysis.answers.get(Integer.toString(targetId)).addAll(resultSet);
                 } else {
-                    AndersonAnalysis.answers.put(Integer.toString(targetId), new HashSet<String>(in.get(targetName)));
+                    AndersonAnalysis.answers.put(Integer.toString(targetId), new TreeSet<String>(resultSet));
                 }
                 return;
             }
@@ -220,7 +302,7 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
         if (u instanceof InvokeStmt) { // 处理函数调用
 
             InvokeExpr ie = ((InvokeStmt) u).getInvokeExpr();
-            processInvokeExpr(ie, in, out);
+            processInvokeExpr(u, ie, in, out);
 
         } else if (u instanceof DefinitionStmt) { // 处理赋值语句
 
@@ -233,7 +315,6 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
 
             if (rightOp instanceof NewExpr) {
                 // 若是new语句，集合应为 { newID }
-                //TODO check constructor's parameter
                 rightSet = new HashSet<String>();
                 rightSet.add(Integer.toString(allocId));
                 allocId = 0; // 为了让没有标注的new分配ID为0,此处用完就给它置0
@@ -254,26 +335,36 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
                     String k = "#" + pto + "." + fieldName;
                     if (in.containsKey(k)) {
                         rightSet.addAll(in.get(k));
+                    } else {
+                        rightSet.add("#unk");
                     }
                 }
 
             } else if (rightOp instanceof ThisRef) {
                 if (in.containsKey("%this")) {
                     rightSet = new HashSet<String>(in.get("%this"));
+                } else {
+                    rightSet.add("#unk");
                 }
 
             } else if (rightOp instanceof ParameterRef) {
                 String rightName = "%" + Integer.toString(((ParameterRef)rightOp).getIndex());
                 if (in.containsKey(rightName)) {
                     rightSet = new HashSet<String>(in.get(rightName));
+                } else {
+                    rightSet.add("#unk");
                 }
 
             } else if (rightOp instanceof InvokeExpr) {
-                Set<String> retValSet = processInvokeExpr((InvokeExpr)rightOp, in, out);
+                Set<String> retValSet = processInvokeExpr(u, (InvokeExpr)rightOp, in, out);
                 if (retValSet != null) rightSet = retValSet;
 
-            } else {// TODO: args
-                System.out.println(curPrefix + " RightOp unknown: " + rightOp.getClass().getName() + " [" + u.toString() + "]");
+            } else if (rightOp instanceof NullConstant) {
+                rightSet = new HashSet<String>();
+                rightSet.add("#null");
+
+            } else {
+                System.out.println("!!! " + curPrefix + " RightOp unknown: " + rightOp.getClass().getName() + " [" + u.toString() + "]");
             }
 
             // 处理左侧
@@ -300,28 +391,27 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
                     }
                 }
             } else {
-                System.out.println(curPrefix + " LeftOp unknown: " + leftOp.getClass().getName() + " [" + u.toString() + "]");
+                System.out.println("!!! " + curPrefix + " LeftOp unknown: " + leftOp.getClass().getName() + " [" + u.toString() + "]");
             }
 
-        } else if (u instanceof ReturnVoidStmt) { // 处理void函数对应的return语句
-
+        } else if (u instanceof ReturnVoidStmt || u instanceof ReturnStmt) {
+            // 处理return语句
             // 合并所有return对应的分析结果
             Map<String, Set<String>> newReturnSet = new HashMap<String, Set<String>>();
             merge(returnSet, in, newReturnSet);
             returnSet = newReturnSet;
 
-        } else if (u instanceof ReturnStmt) { // 处理非void函数对应的return语句
+            if (u instanceof ReturnStmt) { // 处理非void函数对应的return语句
+                Value retVal = ((ReturnStmt)u).getOp();
+                if (retVal instanceof Local) {
 
-            Value retVal = ((ReturnStmt)u).getOp();
-            if (retVal instanceof Local) {
-
-                // 将返回值可能指向的对象加入到"!ret"中
-                if (!returnSet.containsKey("!ret")) returnSet.put("!ret", new HashSet<String>());
-                returnSet.get("!ret").addAll(in.get(((Local)retVal).getName()));
+                    // 将返回值可能指向的对象加入到"!ret"中
+                    if (!returnSet.containsKey("!ret")) returnSet.put("!ret", new HashSet<String>());
+                    returnSet.get("!ret").addAll(in.get(((Local)retVal).getName()));
+                }
             }
-
         } else {
-            System.out.println(curPrefix + " Unit unknown: " + u.getClass().getName() + " [" + u.toString() + "]");
+            System.out.println("!!! " + curPrefix + " Unit unknown: " + u.getClass().getName() + " [" + u.toString() + "]");
         }
 
     }

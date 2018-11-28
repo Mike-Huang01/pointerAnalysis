@@ -1,12 +1,12 @@
-# Soot-based Pointer Analysis
+# 软件分析技术 2018 课程大作业
 
-* please use IntelliJ to open this project
-* mark `code` and `src/main/java` as source folder in module settings
-* `code/` test files
-* `src/main/java/RunPointerAnalysis.java` entry of analysis
+* 作业说明 [软件分析技术（熊英飞）](https://xiongyingfei.github.io/SA/2018/main.htm)
+* 请用 IntelliJ 打开本工程
+* 请将 `code` 和 `src/main/java` 目录标为源代码目录
+* 运行时请运行 `src/main/java/RunPointerAnalysis.java`
+* `code` 目录下存放的是样例测试数据
 
-## command line options:
+## 命令行参数
 
-* last class in command line should contain `main()` method
-* all user class should be provided in commandline
-* `-w -cp out/production/pointerAnalysis -pp benchmark.internal.Benchmark benchmark.objects.A benchmark.objects.B test.Hello`
+* 命令行参数中最后一个类被我们视为 `main()` 方法所在的类
+* 示例 `-w -cp out/production/pointerAnalysis -pp test.Hello`

@@ -3,12 +3,13 @@ package test;
 import benchmark.internal.Benchmark;
 import benchmark.objects.A;
 
-public class MyTest {
+public class MyTest1 {
 
     static A sa;
 
     private void dummy(A x) {
         Benchmark.test(10000, x);
+        Benchmark.test(9000, this);
 
     }
 
@@ -31,7 +32,7 @@ public class MyTest {
 
     public static void main(String[] args) {
         Benchmark.alloc(9999);
-        MyTest t = new MyTest();
+        MyTest1 t = new MyTest1();
 
         Benchmark.alloc(1);
         A a = new A();
@@ -51,9 +52,19 @@ public class MyTest {
 
         Benchmark.test(300, t.haha(10));
 
-        sa = c;
         t.dummy(c);
 
         int x = 1000;
+        sa = c;
+        Benchmark.test(12345, sa);
     }
 }
+/*
+1: 1 2
+2: 2
+3: 3
+300: 100 200 300
+9000: 9999
+10000: 3
+12345: #unk // 我们的程序不支持静态变量的分析
+ */
