@@ -24,7 +24,7 @@ public class WholeProgramTransformer extends SceneTransformer {
 
 
         AndersonAnalysis.tryEnterMethod(m);
-        AndersonAnalysis pointerAnalysis = new AndersonAnalysis(AndersonAnalysis.getGraph(m), "/main", new HashMap<String, Set<String>>());
+        AndersonAnalysis pointerAnalysis = new AndersonAnalysis(AndersonAnalysis.getGraph(m),"/main", new HashMap<String, Set<String>>());
         pointerAnalysis.printDetails();
         AndersonAnalysis.leaveMethod(m);
 
