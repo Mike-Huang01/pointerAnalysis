@@ -3,8 +3,13 @@ package test;
 import benchmark.internal.Benchmark;
 import benchmark.objects.A;
 
-public class MyTest8 {
+class W {
+    A x[];
+};
+
+public class MyTest9 {
     public static void main(String[] args) {
+        W w = new W();
 
         Benchmark.alloc(1);
         A a = new A();
@@ -18,21 +23,21 @@ public class MyTest8 {
         A e = new A();
 
 
-        A x[] = new A[3];
-        x[0] = a;
-        x[1] = b;
-        x[2] = c;
+        w.x = new A[3];
+        w.x[0] = a;
+        w.x[1] = b;
+        w.x[2] = c;
 
         int s = args.length % 3;
-        x[s] = d;
+        w.x[s] = d;
         int t = (args.length * 17 + 19) % 3;
 
-        x[2] = e;
+        w.x[2] = e;
 
-        Benchmark.test(1, x[0]);
-        Benchmark.test(2, x[1]);
-        Benchmark.test(3, x[2]);
-        Benchmark.test(4, x[t]);
+        Benchmark.test(1, w.x[0]);
+        Benchmark.test(2, w.x[1]);
+        Benchmark.test(3, w.x[2]);
+        Benchmark.test(4, w.x[t]);
 
     }
 }

@@ -28,8 +28,8 @@ public class WholeProgramTransformer extends SceneTransformer {
         pointerAnalysis.printDetails();
         AndersonAnalysis.leaveMethod(m);
 
-        System.out.println("== with fallback ==\n" + AndersonAnalysis.getAnswer(true));
-        System.out.println("== without fallback ==\n" + AndersonAnalysis.getAnswer(false));
+        System.out.println("== converted ==\n" + AndersonAnalysis.getAnswer(true));
+        System.out.println("== internal ==\n" + AndersonAnalysis.getAnswer(false));
         AnswerPrinter.printAnswer(AndersonAnalysis.getAnswer(true));
 
     }

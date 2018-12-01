@@ -17,7 +17,7 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
     // 打印答案用代码
     static Map<String, Set<String>> answers = new HashMap<String, Set<String>>();
     static Set<String> allAllocID = new HashSet<String>();
-    static public String getAnswer(boolean fallback)
+    static public String getAnswer(boolean convert)
     {
         Comparator<String> cmp = new Comparator<String>()
         {
@@ -40,7 +40,7 @@ public class AndersonAnalysis extends ForwardFlowAnalysis
 
             Set<String> valSet = answers.get(key);
 
-            if (fallback) {
+            if (convert) {
                 // 处理特殊标号
                 valSet = new HashSet<String>(valSet);
                 if (valSet.contains("#unk")) {
