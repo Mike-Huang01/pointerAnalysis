@@ -9,5 +9,6 @@
 
 ## 命令行参数
 
-* 命令行参数中最后一个类被我们视为 `main()` 方法所在的类
-* 示例 `-cp out/test/pointerAnalysis -pp test.Hello`
+* 第一个参数指定代码所在目录
+* 第二个参数指定 `main()` 方法所在的类
+* 示例 `out/test/pointerAnalysis test.Hello`
